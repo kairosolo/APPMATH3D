@@ -7,12 +7,14 @@ public class ShapeGenerator : MonoBehaviour
     [SerializeField] private Material cubeMaterial;
     [SerializeField] private float cubeSize;
     [SerializeField] private Vector3 cubePos;
+    [SerializeField] private Vector3 cubeRot;
 
     [Header("Pyramid")]
     [SerializeField] private bool showPyramid;
     [SerializeField] private Material pyramidMaterial;
     [SerializeField] private float pyramidSize;
     [SerializeField] private Vector3 pyramidPos;
+    [SerializeField] private Vector3 pyramidRot;
 
     [Header("Cylinder")]
     [SerializeField] private bool showCylinder;
@@ -21,6 +23,7 @@ public class ShapeGenerator : MonoBehaviour
     [SerializeField] private float cylinderHeight;
     [SerializeField, Range(6, 64)] private int cylinderSegments;
     [SerializeField] private Vector3 cylinderPos;
+    [SerializeField] private Vector3 cylinderRot;
 
     [Header("Rectangular Column")]
     [SerializeField] private bool showRectangularColumn;
@@ -28,6 +31,7 @@ public class ShapeGenerator : MonoBehaviour
     [SerializeField] private float columnSize;
     [SerializeField] private float columnHeight;
     [SerializeField] private Vector3 columnPos;
+    [SerializeField] private Vector3 columnRot;
 
     [Header("Sphere")]
     [SerializeField] private bool showSphere;
@@ -36,6 +40,7 @@ public class ShapeGenerator : MonoBehaviour
     [SerializeField, Range(6, 64)] private int sphereLatitudeSegments;
     [SerializeField, Range(6, 64)] private int sphereLongitudeSegments;
     [SerializeField] private Vector3 spherePos;
+    [SerializeField] private Vector3 sphereRot;
 
     [Header("Capsule")]
     [SerializeField] private bool showCapsule;
@@ -45,6 +50,7 @@ public class ShapeGenerator : MonoBehaviour
     [SerializeField, Range(6, 64)] private int capsuleLatitudeSegments;
     [SerializeField, Range(6, 64)] private int capsuleLongitudeSegments;
     [SerializeField] private Vector3 capsulePos;
+    [SerializeField] private Vector3 capsuleRot;
 
     private void OnRenderObject()
     {
@@ -60,6 +66,12 @@ public class ShapeGenerator : MonoBehaviour
         GL.PopMatrix();
     }
 
+    private Vector3 ApplyRotation(Vector3 point, Vector3 pivot, Vector3 rotation)
+    {
+        Quaternion q = Quaternion.Euler(rotation);
+        return q * (point - pivot) + pivot;
+    }
+
     private void DrawCube()
     {
         if (!showCube || cubeMaterial == null) return;
@@ -67,22 +79,23 @@ public class ShapeGenerator : MonoBehaviour
         cubeMaterial.SetPass(0);
         GL.Begin(GL.LINES);
 
-        float half = cubeSize / 2f;
+        Vector3[] v =
+        {
+            new(-1,  1, -1), new( 1,  1, -1), new( 1, -1, -1), new(-1, -1, -1),
+            new(-1,  1,  1), new( 1,  1,  1), new( 1, -1,  1), new(-1, -1,  1)
+        };
 
-        Vector2[] backSquare = CreateSquare(new Vector2(cubePos.x, cubePos.y), cubeSize);
-        Vector2[] frontSquare = CreateSquare(new Vector2(cubePos.x, cubePos.y), cubeSize);
-
-        float backPerspective = PerspectiveCamera.Instance.GetPerspective(cubePos.z - half);
-        float frontPerspective = PerspectiveCamera.Instance.GetPerspective(cubePos.z + half);
-
-        Vector2[] backRendered = RenderSquare(backSquare, backPerspective);
-        Vector2[] frontRendered = RenderSquare(frontSquare, frontPerspective);
+        for (int i = 0; i < v.Length; i++)
+            v[i] = ApplyRotation(v[i] * (cubeSize / 2f), Vector3.zero, cubeRot) + cubePos;
 
         for (int i = 0; i < 4; i++)
-        {
-            GL.Vertex3(backRendered[i].x, backRendered[i].y, 0);
-            GL.Vertex3(frontRendered[i].x, frontRendered[i].y, 0);
-        }
+            DrawLine(ProjectPoint(v[i]), ProjectPoint(v[(i + 1) % 4]));
+
+        for (int i = 4; i < 8; i++)
+            DrawLine(ProjectPoint(v[i]), ProjectPoint(v[4 + ((i + 1) % 4)]));
+
+        for (int i = 0; i < 4; i++)
+            DrawLine(ProjectPoint(v[i]), ProjectPoint(v[i + 4]));
 
         GL.End();
     }
@@ -96,19 +109,21 @@ public class ShapeGenerator : MonoBehaviour
 
         Vector3[] baseVerts =
         {
-            new(-1, 0, -1), new(1, 0, -1),
-            new(1, 0, 1),  new(-1, 0, 1)
+            new(-1, 0, -1), new(1, 0, -1), new(1, 0, 1), new(-1, 0, 1)
         };
 
         Vector3 tip = new(0, 1.5f, 0);
-        for (int i = 0; i < baseVerts.Length; i++) baseVerts[i] = baseVerts[i] * pyramidSize + pyramidPos;
-        tip = tip * pyramidSize + pyramidPos;
+
+        for (int i = 0; i < 4; i++)
+            baseVerts[i] = ApplyRotation(baseVerts[i] * pyramidSize, Vector3.zero, pyramidRot) + pyramidPos;
+
+        tip = ApplyRotation(tip * pyramidSize, Vector3.zero, pyramidRot) + pyramidPos;
 
         for (int i = 0; i < 4; i++)
             DrawLine(ProjectPoint(baseVerts[i]), ProjectPoint(baseVerts[(i + 1) % 4]));
 
-        foreach (var basePoint in baseVerts)
-            DrawLine(ProjectPoint(basePoint), ProjectPoint(tip));
+        for (int i = 0; i < 4; i++)
+            DrawLine(ProjectPoint(baseVerts[i]), ProjectPoint(tip));
 
         GL.End();
     }
@@ -121,6 +136,7 @@ public class ShapeGenerator : MonoBehaviour
         GL.Begin(GL.LINES);
 
         cylinderSegments = Mathf.Max(6, cylinderSegments);
+
         Vector3[] bottom = new Vector3[cylinderSegments];
         Vector3[] top = new Vector3[cylinderSegments];
 
@@ -130,8 +146,8 @@ public class ShapeGenerator : MonoBehaviour
             float x = Mathf.Cos(angle) * cylinderRadius;
             float z = Mathf.Sin(angle) * cylinderRadius;
 
-            bottom[i] = new Vector3(x, 0, z) + cylinderPos;
-            top[i] = new Vector3(x, cylinderHeight, z) + cylinderPos;
+            bottom[i] = ApplyRotation(new Vector3(x, 0, z), Vector3.zero, cylinderRot) + cylinderPos;
+            top[i] = ApplyRotation(new Vector3(x, cylinderHeight, z), Vector3.zero, cylinderRot) + cylinderPos;
         }
 
         for (int i = 0; i < cylinderSegments; i++)
@@ -154,15 +170,15 @@ public class ShapeGenerator : MonoBehaviour
 
         Vector3[] baseVerts =
         {
-            new(-1, 0, -1), new(1, 0, -1),
-            new(1, 0, 1),  new(-1, 0, 1)
+            new(-1, 0, -1), new(1, 0, -1), new(1, 0, 1), new(-1, 0, 1)
         };
 
         Vector3[] topVerts = new Vector3[4];
+
         for (int i = 0; i < 4; i++)
         {
-            baseVerts[i] = baseVerts[i] * columnSize + columnPos;
-            topVerts[i] = baseVerts[i] + Vector3.up * columnHeight * columnSize;
+            baseVerts[i] = ApplyRotation(baseVerts[i] * columnSize, Vector3.zero, columnRot) + columnPos;
+            topVerts[i] = baseVerts[i] + ApplyRotation(Vector3.up * columnHeight * columnSize, Vector3.zero, columnRot);
         }
 
         for (int i = 0; i < 4; i++)
@@ -192,10 +208,12 @@ public class ShapeGenerator : MonoBehaviour
             float r = Mathf.Sin(theta) * sphereRadius;
 
             Vector3[] ring = new Vector3[lonSeg + 1];
+
             for (int lon = 0; lon <= lonSeg; lon++)
             {
                 float phi = (2 * Mathf.PI / lonSeg) * lon;
-                ring[lon] = new Vector3(r * Mathf.Cos(phi), y, r * Mathf.Sin(phi)) + spherePos;
+                ring[lon] = new Vector3(r * Mathf.Cos(phi), y, r * Mathf.Sin(phi));
+                ring[lon] = ApplyRotation(ring[lon], Vector3.zero, sphereRot) + spherePos;
             }
 
             for (int i = 0; i < lonSeg; i++)
@@ -212,7 +230,6 @@ public class ShapeGenerator : MonoBehaviour
         capsuleMaterial.SetPass(0);
         GL.Begin(GL.LINES);
 
-        int latSeg = Mathf.Max(6, capsuleLatitudeSegments);
         int lonSeg = Mathf.Max(6, capsuleLongitudeSegments);
         float halfBody = capsuleHeight * 0.5f;
 
@@ -223,38 +240,21 @@ public class ShapeGenerator : MonoBehaviour
 
             Vector3 bottom1 = new(Mathf.Cos(phi) * capsuleRadius, -halfBody, Mathf.Sin(phi) * capsuleRadius);
             Vector3 top1 = new(Mathf.Cos(phi) * capsuleRadius, halfBody, Mathf.Sin(phi) * capsuleRadius);
+
             Vector3 bottom2 = new(Mathf.Cos(nextPhi) * capsuleRadius, -halfBody, Mathf.Sin(nextPhi) * capsuleRadius);
             Vector3 top2 = new(Mathf.Cos(nextPhi) * capsuleRadius, halfBody, Mathf.Sin(nextPhi) * capsuleRadius);
 
-            DrawLine(ProjectPoint(bottom1 + capsulePos), ProjectPoint(top1 + capsulePos));
-            DrawLine(ProjectPoint(bottom1 + capsulePos), ProjectPoint(bottom2 + capsulePos));
-            DrawLine(ProjectPoint(top1 + capsulePos), ProjectPoint(top2 + capsulePos));
+            bottom1 = ApplyRotation(bottom1, Vector3.zero, capsuleRot) + capsulePos;
+            top1 = ApplyRotation(top1, Vector3.zero, capsuleRot) + capsulePos;
+            bottom2 = ApplyRotation(bottom2, Vector3.zero, capsuleRot) + capsulePos;
+            top2 = ApplyRotation(top2, Vector3.zero, capsuleRot) + capsulePos;
+
+            DrawLine(ProjectPoint(bottom1), ProjectPoint(top1));
+            DrawLine(ProjectPoint(bottom1), ProjectPoint(bottom2));
+            DrawLine(ProjectPoint(top1), ProjectPoint(top2));
         }
 
         GL.End();
-    }
-
-    private Vector2[] CreateSquare(Vector2 position, float size)
-    {
-        return new Vector2[]
-        {
-            position + new Vector2( 1,  1) * size,
-            position + new Vector2(-1,  1) * size,
-            position + new Vector2(-1, -1) * size,
-            position + new Vector2( 1, -1) * size
-        };
-    }
-
-    private Vector2[] RenderSquare(Vector2[] square, float perspective)
-    {
-        Vector2[] output = new Vector2[square.Length];
-        for (int i = 0; i < square.Length; i++)
-        {
-            output[i] = square[i] * perspective;
-            GL.Vertex(square[i] * perspective);
-            GL.Vertex(square[(i + 1) % square.Length] * perspective);
-        }
-        return output;
     }
 
     private Vector2 ProjectPoint(Vector3 point)
